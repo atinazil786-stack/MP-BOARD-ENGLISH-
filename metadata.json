@@ -1,0 +1,6 @@
+{
+  "name": "MP Board English Hub",
+  "description": "Imran Gori Sir's bilingual MP Board Class 9th-12th English learning hub with NCERT chapters, grammar, timed exams, Ask Imran Sir AI, and admin content management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

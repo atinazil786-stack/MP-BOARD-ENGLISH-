@@ -1,0 +1,561 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          request.auth.token.email_verified == true &&
+          request.auth.token.email == 'atinazil786@gmail.com'
+        )
+      );
+    }
+
+    // --- ENTITY VALIDATION HELPERS ---
+
+    function isValidUserProfile(data, userId) {
+      return data.userId == userId &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 120)) &&
+        data.selectedClass is int && data.selectedClass >= 9 && data.selectedClass <= 12 &&
+        data.darkMode is bool &&
+        data.bilingualMode is bool &&
+        data.dailyStreak is int && data.dailyStreak >= 0 && data.dailyStreak <= 10000 &&
+        data.totalTestsTaken is int && data.totalTestsTaken >= 0 && data.totalTestsTaken <= 100000;
+    }
+
+    function isValidBookmark(data, userId) {
+      return data.userId == userId &&
+        data.itemType in ['chapter', 'question'] &&
+        data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128 &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.subtitle is string && data.subtitle.size() <= 400;
+    }
+
+    function isValidStudyProgress(data, userId) {
+      return data.userId == userId &&
+        data.chapterId is string && data.chapterId.size() >= 1 && data.chapterId.size() <= 128 &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.completedSections is list && data.completedSections.size() <= 20 &&
+        (data.completedSections.size() == 0 || data.completedSections[0] is string) &&
+        data.masteryPercent is int && data.masteryPercent >= 0 && data.masteryPercent <= 100;
+    }
+
+    function isValidTestResult(data, userId) {
+      return data.userId == userId &&
+        data.testTitle is string && data.testTitle.size() >= 1 && data.testTitle.size() <= 150 &&
+        data.testMode in ['20Q', '50Q', '100Q', 'CHAPTER', 'FULL_SYLLABUS', 'DAILY_QUIZ'] &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 100 &&
+        data.correctCount is int && data.correctCount >= 0 && data.correctCount <= data.totalQuestions &&
+        data.wrongCount is int && data.wrongCount >= 0 && data.wrongCount <= data.totalQuestions &&
+        data.skippedCount is int && data.skippedCount >= 0 && data.skippedCount <= data.totalQuestions &&
+        data.percentage is int && data.percentage >= 0 && data.percentage <= 100 &&
+        data.durationSeconds is int && data.durationSeconds >= 0 && data.durationSeconds <= 10800;
+    }
+
+    function isValidAdminChapter(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.bookName is string && data.bookName.size() >= 1 && data.bookName.size() <= 60 &&
+        data.chapterNumber is int && data.chapterNumber >= 1 && data.chapterNumber <= 30 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 150 &&
+        data.author is string && data.author.size() >= 1 && data.author.size() <= 100 &&
+        data.summaryEn is string && data.summaryEn.size() >= 1 && data.summaryEn.size() <= 4000 &&
+        data.summaryHi is string && data.summaryHi.size() >= 1 && data.summaryHi.size() <= 4000 &&
+        data.hindiExplanation is string && data.hindiExplanation.size() >= 1 && data.hindiExplanation.size() <= 6000 &&
+        data.wordMeanings is list && data.wordMeanings.size() <= 100 &&
+        (data.wordMeanings.size() == 0 || data.wordMeanings[0] is string) &&
+        data.isPublished is bool;
+    }
+
+    function isValidAdminQuestion(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.chapterId is string && data.chapterId.size() >= 1 && data.chapterId.size() <= 128 &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.questionType in ['VERY_SHORT', 'SHORT', 'LONG', 'MCQ', 'FILL_BLANK', 'TRUE_FALSE', 'MATCH', 'EXTRACT', 'BOARD_PYQ'] &&
+        data.sourceTag in ['NCERT', 'MP_BOARD_VERIFIED', 'ADMIN_ADDED'] &&
+        data.promptEn is string && data.promptEn.size() >= 1 && data.promptEn.size() <= 1000 &&
+        data.promptHi is string && data.promptHi.size() <= 1000 &&
+        data.answerEn is string && data.answerEn.size() >= 1 && data.answerEn.size() <= 2000 &&
+        data.answerHi is string && data.answerHi.size() <= 2000 &&
+        data.options is list && data.options.size() <= 4 &&
+        (data.options.size() == 0 || data.options[0] is string) &&
+        data.correctOptionIndex is int && data.correctOptionIndex >= -1 && data.correctOptionIndex <= 3 &&
+        data.explanationHi is string && data.explanationHi.size() <= 1500 &&
+        data.isPublished is bool;
+    }
+
+    function isValidAdminGrammar(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+        data.titleHi is string && data.titleHi.size() >= 1 && data.titleHi.size() <= 120 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
+        data.explanationHi is string && data.explanationHi.size() >= 1 && data.explanationHi.size() <= 5000 &&
+        data.rulesSummaryEn is string && data.rulesSummaryEn.size() >= 1 && data.rulesSummaryEn.size() <= 4000 &&
+        data.examples is list && data.examples.size() <= 20 &&
+        (data.examples.size() == 0 || data.examples[0] is string) &&
+        data.isPublished is bool;
+    }
+
+    function isValidAdminTestPaper(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 150 &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.testMode in ['20Q', '50Q', '100Q', 'CHAPTER', 'FULL_SYLLABUS'] &&
+        data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 180 &&
+        data.questionCount is int && data.questionCount >= 1 && data.questionCount <= 100 &&
+        data.isPublished is bool;
+    }
+
+    function isValidWritingPracticeAttempt(data, userId) {
+      return data.userId == userId &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.chapterId is string && data.chapterId.size() >= 1 && data.chapterId.size() <= 128 &&
+        data.chapterTitle is string && data.chapterTitle.size() >= 1 && data.chapterTitle.size() <= 200 &&
+        data.questionPrompt is string && data.questionPrompt.size() >= 1 && data.questionPrompt.size() <= 2000 &&
+        data.studentAnswer is string && data.studentAnswer.size() >= 1 && data.studentAnswer.size() <= 8000 &&
+        data.maxMarks is int && data.maxMarks >= 1 && data.maxMarks <= 20 &&
+        data.marksObtained is number && data.marksObtained >= 0 && data.marksObtained <= data.maxMarks &&
+        data.grammarScore is int && data.grammarScore >= 0 && data.grammarScore <= 100 &&
+        data.spellingScore is int && data.spellingScore >= 0 && data.spellingScore <= 100 &&
+        data.vocabularyScore is int && data.vocabularyScore >= 0 && data.vocabularyScore <= 100 &&
+        data.structureScore is int && data.structureScore >= 0 && data.structureScore <= 100 &&
+        data.correctedAnswer is string && data.correctedAnswer.size() <= 8000 &&
+        data.grammaticalMistakes is list && data.grammaticalMistakes.size() <= 25 &&
+        data.suggestions is list && data.suggestions.size() <= 25 &&
+        data.modelAnswer is string && data.modelAnswer.size() <= 8000 &&
+        data.explanationHi is string && data.explanationHi.size() <= 8000;
+    }
+
+    function isValidStudentTestSummary(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 80 &&
+        data.testTitle is string && data.testTitle.size() >= 1 && data.testTitle.size() <= 150 &&
+        data.testMode in ['20Q', '50Q', '100Q', 'CHAPTER', 'FULL_SYLLABUS', 'DAILY_QUIZ'] &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 100 &&
+        data.correctCount is int && data.correctCount >= 0 && data.correctCount <= data.totalQuestions &&
+        data.wrongCount is int && data.wrongCount >= 0 && data.wrongCount <= data.totalQuestions &&
+        data.percentage is int && data.percentage >= 0 && data.percentage <= 100 &&
+        data.durationSeconds is int && data.durationSeconds >= 0 && data.durationSeconds <= 10800;
+    }
+
+    function isValidAdminWritingMaterial(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.topicCategory is string && data.topicCategory.size() >= 1 && data.topicCategory.size() <= 100 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.titleHi is string && data.titleHi.size() <= 160 &&
+        data.applicableClasses is list && data.applicableClasses.size() >= 1 && data.applicableClasses.size() <= 4 &&
+        data.explanationHi is string && data.explanationHi.size() >= 1 && data.explanationHi.size() <= 6000 &&
+        data.formatTemplate is string && data.formatTemplate.size() <= 4000 &&
+        data.solvedExampleEn is string && data.solvedExampleEn.size() <= 6000 &&
+        data.solvedExampleHi is string && data.solvedExampleHi.size() <= 6000 &&
+        data.examQuestion is string && data.examQuestion.size() <= 2000 &&
+        data.modelAnswer is string && data.modelAnswer.size() <= 6000 &&
+        data.isPublished is bool;
+    }
+
+    function isValidAdminPreviousPaper(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.year is int && data.year >= 2018 && data.year <= 2030 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.setCode is string && data.setCode.size() >= 1 && data.setCode.size() <= 60 &&
+        data.isVerifiedPyq is bool &&
+        data.summaryHi is string && data.summaryHi.size() <= 4000 &&
+        data.pdfFileName is string && data.pdfFileName.size() <= 200 &&
+        data.pdfUrl is string && data.pdfUrl.size() <= 1000 &&
+        data.pdfBase64 is string && data.pdfBase64.size() <= 650000 &&
+        data.questionsFormatted is list && data.questionsFormatted.size() <= 80 &&
+        (data.questionsFormatted.size() == 0 || data.questionsFormatted[0] is string) &&
+        data.isPublished is bool;
+    }
+
+    function isValidAdminPdfNote(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.chapterId is string && data.chapterId.size() >= 1 && data.chapterId.size() <= 128 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.summaryHi is string && data.summaryHi.size() <= 2000 &&
+        data.pdfFileName is string && data.pdfFileName.size() <= 200 &&
+        data.pdfUrl is string && data.pdfUrl.size() <= 1000 &&
+        data.pdfBase64 is string && data.pdfBase64.size() <= 650000 &&
+        data.isPublished is bool;
+    }
+
+    function isValidAdminVideoLink(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.classLevel is int && data.classLevel >= 9 && data.classLevel <= 12 &&
+        data.chapterId is string && data.chapterId.size() >= 1 && data.chapterId.size() <= 128 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.summaryHi is string && data.summaryHi.size() <= 2000 &&
+        data.videoUrl is string && data.videoUrl.size() >= 1 && data.videoUrl.size() <= 1000 &&
+        data.isPublished is bool;
+    }
+
+    function isValidTeacherProfileConfig(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.teacherName is string && data.teacherName.size() >= 1 && data.teacherName.size() <= 100 &&
+        data.brandTitle is string && data.brandTitle.size() >= 1 && data.brandTitle.size() <= 100 &&
+        data.brandSubtitle is string && data.brandSubtitle.size() >= 1 && data.brandSubtitle.size() <= 120 &&
+        data.photoBase64 is string && data.photoBase64.size() <= 450000;
+    }
+
+    // --- ADMIN REGISTRY ---
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && request.auth.uid == adminUid && isValidId(adminUid);
+      allow list, create, update, delete: if false;
+    }
+
+    // --- STUDENT PROFILE & ISOLATED SUBCOLLECTIONS ---
+    match /users/{userId} {
+      allow list: if isOwner(userId);
+      allow get: if isOwner(userId) && isValidId(userId);
+
+      allow create: if isOwner(userId) &&
+        isValidId(userId) &&
+        incoming().keys().hasAll(['userId', 'displayName', 'selectedClass', 'darkMode', 'bilingualMode', 'dailyStreak', 'totalTestsTaken', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['userId', 'displayName', 'email', 'selectedClass', 'darkMode', 'bilingualMode', 'dailyStreak', 'totalTestsTaken', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidUserProfile(incoming(), userId);
+
+      allow update: if isOwner(userId) &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'selectedClass', 'darkMode', 'bilingualMode', 'dailyStreak', 'totalTestsTaken', 'updatedAt']);
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      match /bookmarks/{bookmarkId} {
+        allow list: if isOwner(userId);
+        allow get, delete: if isOwner(userId) && isValidId(bookmarkId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(bookmarkId) &&
+          incoming().keys().hasAll(['userId', 'itemType', 'targetId', 'classLevel', 'title', 'subtitle', 'createdAt']) &&
+          incoming().keys().hasOnly(['userId', 'itemType', 'targetId', 'classLevel', 'title', 'subtitle', 'createdAt']) &&
+          incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+          isValidBookmark(incoming(), userId);
+
+        allow update: if false;
+      }
+
+      match /progress/{progressId} {
+        allow list: if isOwner(userId);
+        allow get, delete: if isOwner(userId) && isValidId(progressId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(progressId) &&
+          incoming().keys().hasAll(['userId', 'chapterId', 'classLevel', 'completedSections', 'masteryPercent', 'createdAt', 'updatedAt']) &&
+          incoming().keys().hasOnly(['userId', 'chapterId', 'classLevel', 'completedSections', 'masteryPercent', 'createdAt', 'updatedAt']) &&
+          incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+          incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+          isValidStudyProgress(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+          isValidId(progressId) &&
+          isValidStudyProgress(incoming(), userId) &&
+          incoming().userId == existing().userId &&
+          incoming().chapterId == existing().chapterId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['classLevel', 'completedSections', 'masteryPercent', 'updatedAt']);
+      }
+
+      match /testHistory/{resultId} {
+        allow list: if isOwner(userId);
+        allow get, delete: if isOwner(userId) && isValidId(resultId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(resultId) &&
+          incoming().keys().hasAll(['userId', 'testTitle', 'testMode', 'classLevel', 'totalQuestions', 'correctCount', 'wrongCount', 'skippedCount', 'percentage', 'durationSeconds', 'createdAt']) &&
+          incoming().keys().hasOnly(['userId', 'testTitle', 'testMode', 'classLevel', 'totalQuestions', 'correctCount', 'wrongCount', 'skippedCount', 'percentage', 'durationSeconds', 'createdAt']) &&
+          incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+          isValidTestResult(incoming(), userId);
+
+        allow update: if false;
+      }
+
+      match /writingPractice/{attemptId} {
+        allow list: if isOwner(userId);
+        allow get, delete: if isOwner(userId) && isValidId(attemptId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(attemptId) &&
+          incoming().keys().hasAll(['userId', 'classLevel', 'chapterId', 'chapterTitle', 'questionPrompt', 'studentAnswer', 'maxMarks', 'marksObtained', 'grammarScore', 'spellingScore', 'vocabularyScore', 'structureScore', 'correctedAnswer', 'grammaticalMistakes', 'suggestions', 'modelAnswer', 'explanationHi', 'createdAt']) &&
+          incoming().keys().hasOnly(['userId', 'classLevel', 'chapterId', 'chapterTitle', 'questionPrompt', 'studentAnswer', 'maxMarks', 'marksObtained', 'grammarScore', 'spellingScore', 'vocabularyScore', 'structureScore', 'correctedAnswer', 'grammaticalMistakes', 'suggestions', 'modelAnswer', 'explanationHi', 'createdAt']) &&
+          incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+          isValidWritingPracticeAttempt(incoming(), userId);
+
+        allow update: if false;
+      }
+    }
+
+    // --- STUDENT TEST SUMMARIES (OWNER OR VERIFIED ADMIN IMRAN GORI SIR) ---
+    match /studentTestResults/{resultId} {
+      allow list: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow get: if isValidId(resultId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
+
+      allow create: if isSignedIn() &&
+        isValidId(resultId) &&
+        incoming().userId == request.auth.uid &&
+        incoming().keys().hasAll(['userId', 'studentName', 'testTitle', 'testMode', 'classLevel', 'totalQuestions', 'correctCount', 'wrongCount', 'percentage', 'durationSeconds', 'createdAt']) &&
+        incoming().keys().hasOnly(['userId', 'studentName', 'testTitle', 'testMode', 'classLevel', 'totalQuestions', 'correctCount', 'wrongCount', 'percentage', 'durationSeconds', 'createdAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        isValidStudentTestSummary(incoming());
+
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(resultId);
+    }
+
+    // --- ADMIN-MANAGED CURRICULUM COLLECTIONS ---
+    match /chapters/{chapterId} {
+      allow list: if isSignedIn() && (existing().isPublished == true || existing().authorId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(chapterId) && (existing().isPublished == true || isAdmin());
+
+      allow create: if isAdmin() &&
+        isValidId(chapterId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'classLevel', 'bookName', 'chapterNumber', 'title', 'author', 'summaryEn', 'summaryHi', 'hindiExplanation', 'wordMeanings', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'classLevel', 'bookName', 'chapterNumber', 'title', 'author', 'summaryEn', 'summaryHi', 'hindiExplanation', 'wordMeanings', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidAdminChapter(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(chapterId) &&
+        isValidAdminChapter(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['classLevel', 'bookName', 'chapterNumber', 'title', 'author', 'summaryEn', 'summaryHi', 'hindiExplanation', 'wordMeanings', 'isPublished', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(chapterId);
+    }
+
+    match /chapterQuestions/{questionId} {
+      allow list: if isSignedIn() && (existing().isPublished == true || existing().authorId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(questionId) && (existing().isPublished == true || isAdmin());
+
+      allow create: if isAdmin() &&
+        isValidId(questionId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'chapterId', 'classLevel', 'questionType', 'sourceTag', 'promptEn', 'promptHi', 'answerEn', 'answerHi', 'options', 'correctOptionIndex', 'explanationHi', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'chapterId', 'classLevel', 'questionType', 'sourceTag', 'promptEn', 'promptHi', 'answerEn', 'answerHi', 'options', 'correctOptionIndex', 'explanationHi', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidAdminQuestion(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(questionId) &&
+        isValidAdminQuestion(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['chapterId', 'classLevel', 'questionType', 'sourceTag', 'promptEn', 'promptHi', 'answerEn', 'answerHi', 'options', 'correctOptionIndex', 'explanationHi', 'isPublished', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(questionId);
+    }
+
+    match /grammarTopics/{topicId} {
+      allow list: if isSignedIn() && (existing().isPublished == true || existing().authorId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(topicId) && (existing().isPublished == true || isAdmin());
+
+      allow create: if isAdmin() &&
+        isValidId(topicId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'title', 'titleHi', 'category', 'explanationHi', 'rulesSummaryEn', 'examples', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'title', 'titleHi', 'category', 'explanationHi', 'rulesSummaryEn', 'examples', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidAdminGrammar(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(topicId) &&
+        isValidAdminGrammar(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'titleHi', 'category', 'explanationHi', 'rulesSummaryEn', 'examples', 'isPublished', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(topicId);
+    }
+
+    match /customTests/{testId} {
+      allow list: if isSignedIn() && (existing().isPublished == true || existing().authorId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(testId) && (existing().isPublished == true || isAdmin());
+
+      allow create: if isAdmin() &&
+        isValidId(testId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'title', 'classLevel', 'testMode', 'durationMinutes', 'questionCount', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'title', 'classLevel', 'testMode', 'durationMinutes', 'questionCount', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidAdminTestPaper(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(testId) &&
+        isValidAdminTestPaper(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'classLevel', 'testMode', 'durationMinutes', 'questionCount', 'isPublished', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(testId);
+    }
+
+    match /writingMaterials/{materialId} {
+      allow list: if isSignedIn() && (existing().isPublished == true || existing().authorId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(materialId) && (existing().isPublished == true || isAdmin());
+
+      allow create: if isAdmin() &&
+        isValidId(materialId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'topicCategory', 'title', 'titleHi', 'applicableClasses', 'explanationHi', 'formatTemplate', 'solvedExampleEn', 'solvedExampleHi', 'examQuestion', 'modelAnswer', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'topicCategory', 'title', 'titleHi', 'applicableClasses', 'explanationHi', 'formatTemplate', 'solvedExampleEn', 'solvedExampleHi', 'examQuestion', 'modelAnswer', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidAdminWritingMaterial(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(materialId) &&
+        isValidAdminWritingMaterial(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['topicCategory', 'title', 'titleHi', 'applicableClasses', 'explanationHi', 'formatTemplate', 'solvedExampleEn', 'solvedExampleHi', 'examQuestion', 'modelAnswer', 'isPublished', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(materialId);
+    }
+
+    match /previousPapers/{paperId} {
+      allow list: if isSignedIn() && (existing().isPublished == true || existing().authorId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(paperId) && (existing().isPublished == true || isAdmin());
+
+      allow create: if isAdmin() &&
+        isValidId(paperId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'classLevel', 'year', 'title', 'setCode', 'isVerifiedPyq', 'summaryHi', 'pdfFileName', 'pdfUrl', 'pdfBase64', 'questionsFormatted', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'classLevel', 'year', 'title', 'setCode', 'isVerifiedPyq', 'summaryHi', 'pdfFileName', 'pdfUrl', 'pdfBase64', 'questionsFormatted', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidAdminPreviousPaper(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(paperId) &&
+        isValidAdminPreviousPaper(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['classLevel', 'year', 'title', 'setCode', 'isVerifiedPyq', 'summaryHi', 'pdfFileName', 'pdfUrl', 'pdfBase64', 'questionsFormatted', 'isPublished', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(paperId);
+    }
+
+    match /pdfNotes/{noteId} {
+      allow list: if isSignedIn() && (existing().isPublished == true || existing().authorId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(noteId) && (existing().isPublished == true || isAdmin());
+
+      allow create: if isAdmin() &&
+        isValidId(noteId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'classLevel', 'chapterId', 'title', 'summaryHi', 'pdfFileName', 'pdfUrl', 'pdfBase64', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'classLevel', 'chapterId', 'title', 'summaryHi', 'pdfFileName', 'pdfUrl', 'pdfBase64', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidAdminPdfNote(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(noteId) &&
+        isValidAdminPdfNote(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['classLevel', 'chapterId', 'title', 'summaryHi', 'pdfFileName', 'pdfUrl', 'pdfBase64', 'isPublished', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(noteId);
+    }
+
+    match /videoLinks/{videoId} {
+      allow list: if isSignedIn() && (existing().isPublished == true || existing().authorId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(videoId) && (existing().isPublished == true || isAdmin());
+
+      allow create: if isAdmin() &&
+        isValidId(videoId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'classLevel', 'chapterId', 'title', 'summaryHi', 'videoUrl', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'classLevel', 'chapterId', 'title', 'summaryHi', 'videoUrl', 'isPublished', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidAdminVideoLink(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(videoId) &&
+        isValidAdminVideoLink(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['classLevel', 'chapterId', 'title', 'summaryHi', 'videoUrl', 'isPublished', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(videoId);
+    }
+
+    // --- APP TEACHER PROFILE & BRANDING CONFIG ---
+    match /appConfig/{configId} {
+      allow get: if isSignedIn() && isValidId(configId);
+      allow list: if isSignedIn();
+
+      allow create: if isAdmin() &&
+        isValidId(configId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'teacherName', 'brandTitle', 'brandSubtitle', 'photoBase64', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'teacherName', 'brandTitle', 'brandSubtitle', 'photoBase64', 'updatedAt']) &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidTeacherProfileConfig(incoming());
+
+      allow update: if isAdmin() &&
+        isValidId(configId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().keys().hasAll(['authorId', 'teacherName', 'brandTitle', 'brandSubtitle', 'photoBase64', 'updatedAt']) &&
+        incoming().keys().hasOnly(['authorId', 'teacherName', 'brandTitle', 'brandSubtitle', 'photoBase64', 'updatedAt']) &&
+        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+        isValidTeacherProfileConfig(incoming());
+
+      allow delete: if isAdmin() && isValidId(configId);
+    }
+  }
+}

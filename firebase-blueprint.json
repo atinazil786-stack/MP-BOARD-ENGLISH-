@@ -1,0 +1,333 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated student or admin profile and learning preferences.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID matching document ID." },
+        "displayName": { "type": "string", "description": "Student display name." },
+        "email": { "type": "string", "description": "Google account email (optional, PII isolated to owner)." },
+        "selectedClass": { "type": "integer", "description": "Active MP Board class (9, 10, 11, or 12)." },
+        "darkMode": { "type": "boolean", "description": "Dark mode theme preference." },
+        "bilingualMode": { "type": "boolean", "description": "Show Hindi explanations alongside English." },
+        "dailyStreak": { "type": "integer", "description": "Consecutive study days." },
+        "totalTestsTaken": { "type": "integer", "description": "Total completed tests." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update." }
+      },
+      "required": ["userId", "displayName", "selectedClass", "darkMode", "bilingualMode", "dailyStreak", "totalTestsTaken", "createdAt", "updatedAt"]
+    },
+    "BookmarkItem": {
+      "title": "BookmarkItem",
+      "description": "Bookmarked chapter or favorite question saved by a student.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "itemType": { "type": "string", "enum": ["chapter", "question"] },
+        "targetId": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "itemType", "targetId", "classLevel", "title", "subtitle", "createdAt"]
+    },
+    "StudyProgress": {
+      "title": "StudyProgress",
+      "description": "Per-chapter study completion progress for a student.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "chapterId": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "completedSections": { "type": "array", "description": "List of completed study section keys." },
+        "masteryPercent": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "chapterId", "classLevel", "completedSections", "masteryPercent", "createdAt", "updatedAt"]
+    },
+    "TestResultRecord": {
+      "title": "TestResultRecord",
+      "description": "Completed online exam or chapter test scorecard.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "testTitle": { "type": "string" },
+        "testMode": { "type": "string", "enum": ["20Q", "50Q", "100Q", "CHAPTER", "FULL_SYLLABUS", "DAILY_QUIZ"] },
+        "classLevel": { "type": "integer" },
+        "totalQuestions": { "type": "integer" },
+        "correctCount": { "type": "integer" },
+        "wrongCount": { "type": "integer" },
+        "skippedCount": { "type": "integer" },
+        "percentage": { "type": "integer" },
+        "durationSeconds": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "testTitle", "testMode", "classLevel", "totalQuestions", "correctCount", "wrongCount", "skippedCount", "percentage", "durationSeconds", "createdAt"]
+    },
+    "AdminChapter": {
+      "title": "AdminChapter",
+      "description": "Admin-managed or updated MP Board NCERT chapter study material.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "bookName": { "type": "string" },
+        "chapterNumber": { "type": "integer" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "summaryEn": { "type": "string" },
+        "summaryHi": { "type": "string" },
+        "hindiExplanation": { "type": "string" },
+        "wordMeanings": { "type": "array" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "classLevel", "bookName", "chapterNumber", "title", "author", "summaryEn", "summaryHi", "hindiExplanation", "wordMeanings", "isPublished", "createdAt", "updatedAt"]
+    },
+    "AdminQuestion": {
+      "title": "AdminQuestion",
+      "description": "Admin-managed chapter question, MCQ, or verified board question.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "chapterId": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "questionType": { "type": "string", "enum": ["VERY_SHORT", "SHORT", "LONG", "MCQ", "FILL_BLANK", "TRUE_FALSE", "MATCH", "EXTRACT", "BOARD_PYQ"] },
+        "sourceTag": { "type": "string", "enum": ["NCERT", "MP_BOARD_VERIFIED", "ADMIN_ADDED"] },
+        "promptEn": { "type": "string" },
+        "promptHi": { "type": "string" },
+        "answerEn": { "type": "string" },
+        "answerHi": { "type": "string" },
+        "options": { "type": "array" },
+        "correctOptionIndex": { "type": "integer" },
+        "explanationHi": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "chapterId", "classLevel", "questionType", "sourceTag", "promptEn", "promptHi", "answerEn", "answerHi", "options", "correctOptionIndex", "explanationHi", "isPublished", "createdAt", "updatedAt"]
+    },
+    "AdminGrammarLesson": {
+      "title": "AdminGrammarLesson",
+      "description": "Admin-managed English grammar topic with Hindi explanation and practice.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "title": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "category": { "type": "string" },
+        "explanationHi": { "type": "string" },
+        "rulesSummaryEn": { "type": "string" },
+        "examples": { "type": "array" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "title", "titleHi", "category", "explanationHi", "rulesSummaryEn", "examples", "isPublished", "createdAt", "updatedAt"]
+    },
+    "AdminTestPaper": {
+      "title": "AdminTestPaper",
+      "description": "Admin-managed custom online test paper metadata.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "title": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "testMode": { "type": "string", "enum": ["20Q", "50Q", "100Q", "CHAPTER", "FULL_SYLLABUS"] },
+        "durationMinutes": { "type": "integer" },
+        "questionCount": { "type": "integer" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "title", "classLevel", "testMode", "durationMinutes", "questionCount", "isPublished", "createdAt", "updatedAt"]
+    },
+    "WritingPracticeAttempt": {
+      "title": "WritingPracticeAttempt",
+      "description": "Student AI Answer Writing Practice submission and structured Gemini evaluation.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "chapterId": { "type": "string" },
+        "chapterTitle": { "type": "string" },
+        "questionPrompt": { "type": "string" },
+        "studentAnswer": { "type": "string" },
+        "maxMarks": { "type": "integer" },
+        "marksObtained": { "type": "number" },
+        "grammarScore": { "type": "integer" },
+        "spellingScore": { "type": "integer" },
+        "vocabularyScore": { "type": "integer" },
+        "structureScore": { "type": "integer" },
+        "correctedAnswer": { "type": "string" },
+        "grammaticalMistakes": { "type": "array" },
+        "suggestions": { "type": "array" },
+        "modelAnswer": { "type": "string" },
+        "explanationHi": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "classLevel", "chapterId", "chapterTitle", "questionPrompt", "studentAnswer", "maxMarks", "marksObtained", "correctedAnswer", "grammaticalMistakes", "suggestions", "modelAnswer", "explanationHi", "createdAt"]
+    },
+    "StudentTestSummary": {
+      "title": "StudentTestSummary",
+      "description": "Append-only test score summary readable by student owner and verified admin Imran Gori Sir.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "testTitle": { "type": "string" },
+        "testMode": { "type": "string", "enum": ["20Q", "50Q", "100Q", "CHAPTER", "FULL_SYLLABUS", "DAILY_QUIZ"] },
+        "classLevel": { "type": "integer" },
+        "totalQuestions": { "type": "integer" },
+        "correctCount": { "type": "integer" },
+        "wrongCount": { "type": "integer" },
+        "percentage": { "type": "integer" },
+        "durationSeconds": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "studentName", "testTitle", "testMode", "classLevel", "totalQuestions", "correctCount", "wrongCount", "percentage", "durationSeconds", "createdAt"]
+    },
+    "AdminWritingMaterial": {
+      "title": "AdminWritingMaterial",
+      "description": "Admin-managed Writing Skills lesson, format rules, solved examples, and model answers.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "topicCategory": { "type": "string" },
+        "title": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "applicableClasses": { "type": "array" },
+        "explanationHi": { "type": "string" },
+        "formatTemplate": { "type": "string" },
+        "solvedExampleEn": { "type": "string" },
+        "solvedExampleHi": { "type": "string" },
+        "examQuestion": { "type": "string" },
+        "modelAnswer": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "topicCategory", "title", "titleHi", "applicableClasses", "explanationHi", "formatTemplate", "solvedExampleEn", "solvedExampleHi", "examQuestion", "modelAnswer", "isPublished", "createdAt", "updatedAt"]
+    },
+    "AdminPreviousPaper": {
+      "title": "AdminPreviousPaper",
+      "description": "Admin-uploaded verified MP Board Previous Year Paper with questions, solutions, and PDF attachment.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "year": { "type": "integer" },
+        "title": { "type": "string" },
+        "setCode": { "type": "string" },
+        "isVerifiedPyq": { "type": "boolean" },
+        "summaryHi": { "type": "string" },
+        "pdfFileName": { "type": "string" },
+        "pdfUrl": { "type": "string" },
+        "pdfBase64": { "type": "string" },
+        "questionsFormatted": { "type": "array" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "classLevel", "year", "title", "setCode", "isVerifiedPyq", "summaryHi", "pdfFileName", "pdfUrl", "pdfBase64", "questionsFormatted", "isPublished", "createdAt", "updatedAt"]
+    },
+    "AdminPdfNote": {
+      "title": "AdminPdfNote",
+      "description": "Admin-uploaded PDF study note attached to a class/chapter.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "chapterId": { "type": "string" },
+        "title": { "type": "string" },
+        "summaryHi": { "type": "string" },
+        "pdfFileName": { "type": "string" },
+        "pdfUrl": { "type": "string" },
+        "pdfBase64": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "classLevel", "chapterId", "title", "summaryHi", "pdfFileName", "pdfUrl", "pdfBase64", "isPublished", "createdAt", "updatedAt"]
+    },
+    "AdminVideoLink": {
+      "title": "AdminVideoLink",
+      "description": "Admin-published animated video or explanation video link for a class/chapter.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "classLevel": { "type": "integer" },
+        "chapterId": { "type": "string" },
+        "title": { "type": "string" },
+        "summaryHi": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "classLevel", "chapterId", "title", "summaryHi", "videoUrl", "isPublished", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Student profile and settings document isolated to owner."
+    },
+    "/users/{userId}/bookmarks/{bookmarkId}": {
+      "schema": { "$ref": "#/entities/BookmarkItem" },
+      "description": "Bookmarked chapters and favorite questions per student."
+    },
+    "/users/{userId}/progress/{progressId}": {
+      "schema": { "$ref": "#/entities/StudyProgress" },
+      "description": "Chapter completion tracking per student."
+    },
+    "/users/{userId}/testHistory/{resultId}": {
+      "schema": { "$ref": "#/entities/TestResultRecord" },
+      "description": "Append-only student exam scorecards."
+    },
+    "/users/{userId}/writingPractice/{attemptId}": {
+      "schema": { "$ref": "#/entities/WritingPracticeAttempt" },
+      "description": "AI answer writing evaluation history per student."
+    },
+    "/studentTestResults/{resultId}": {
+      "schema": { "$ref": "#/entities/StudentTestSummary" },
+      "description": "Student test summaries readable by owner and verified admin Imran Gori Sir."
+    },
+    "/chapters/{chapterId}": {
+      "schema": { "$ref": "#/entities/AdminChapter" },
+      "description": "Admin-managed curriculum chapters."
+    },
+    "/chapterQuestions/{questionId}": {
+      "schema": { "$ref": "#/entities/AdminQuestion" },
+      "description": "Admin-managed chapter questions and MCQs."
+    },
+    "/grammarTopics/{topicId}": {
+      "schema": { "$ref": "#/entities/AdminGrammarLesson" },
+      "description": "Admin-managed grammar lessons."
+    },
+    "/customTests/{testId}": {
+      "schema": { "$ref": "#/entities/AdminTestPaper" },
+      "description": "Admin-managed test papers."
+    },
+    "/writingMaterials/{materialId}": {
+      "schema": { "$ref": "#/entities/AdminWritingMaterial" },
+      "description": "Admin-managed Writing Skills lessons and model examples."
+    },
+    "/previousPapers/{paperId}": {
+      "schema": { "$ref": "#/entities/AdminPreviousPaper" },
+      "description": "Admin-uploaded verified MP Board previous year question papers and PDFs."
+    },
+    "/pdfNotes/{noteId}": {
+      "schema": { "$ref": "#/entities/AdminPdfNote" },
+      "description": "Admin-uploaded PDF study notes."
+    },
+    "/videoLinks/{videoId}": {
+      "schema": { "$ref": "#/entities/AdminVideoLink" },
+      "description": "Admin-published animated video links."
+    }
+  }
+}
